@@ -4,6 +4,7 @@ import requests
 import json
 import logging
 import sys
+from typing import Optional
 
 # Load environment variables from .env file
 load_dotenv()
@@ -76,7 +77,39 @@ def get_new_short_token(
         return {"status": "error", "description": f"Request error: {req_err}"}
 
 
-# Example usage:
-# logging.info(get_new_short_token(API_REFRESH_ADDRESS, REFRESH_TOKEN, APP_KEY, APP_SECRET))
+def read_binary_file(local_file_path: str) -> Optional[bytes]:
+    """
+    Load the specified file in the binary format due to the
+    Dropbox API requirements.
+
+    Parameters:
+        local_file_path (str): The path to the file to be read.
+
+    Returns:
+        Optional[bytes]: The binary content of the file if successful,
+            None if an exception occurs.
+
+    Raises:
+        Exception: If any error occurs during file reading.
+    """
+    try:
+        with open(local_file_path, "rb") as f:
+            file_content = f.read()
+        return file_content
+    except Exception as e:
+        error_msg = f"Error while reading the file: {local_file_path} " f"Error: {e}"
+        logging.error(error_msg)
+        raise
+
+
+# def send_file(file: str, short_token_file: str,
+#               dropbox_dir_path: str):
+#     with open(short_token_file) as infile:
+#         short_token = infile.read()
+
+#     print(short_token)
+
+
+# send_file("some_file.txt", "short_token.txt")
 
 # print(get_new_short_token(API_REFRESH_ADDRESS, REFRESH_TOKEN, APP_KEY, APP_SECRET))
