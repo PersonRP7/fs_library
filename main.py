@@ -77,41 +77,36 @@ def get_new_short_token(
         return {"status": "error", "description": f"Request error: {req_err}"}
 
 
-def read_binary_file(short_token_file: str) -> Optional[bytes]:
+def read_file(file_path: str, mode: str) -> Optional[bytes]:
     """
-    Load the specified file in the binary format due to the
-    Dropbox API requirements.
+    Read a file into memory. The `rb` is used when sending the actual
+    payload due to Dropbox API specifications.
 
     Parameters:
-        short_token_file (str): The path to the file to be read.
-
+        file_path (str): The path to the file to be read.
+        mode (str): File open mode. `r` for read, `rb` for read binary.
     Returns:
-        Optional[bytes]: The binary content of the file if successful,
+        Optional[bytes]: The content of the file if successful,
             None if an exception occurs.
 
     Raises:
         Exception: If any error occurs during file reading.
     """
     try:
-        with open(short_token_file, "rb") as f:
+        with open(file_path, mode) as f:
             file_content = f.read()
         return file_content
     except Exception as e:
-        error_msg = f"Error while reading the file: {short_token_file} " f"Error: {e}"
+        error_msg = f"Error while reading the file: {file_path} " f"Error: {e}"
         logging.error(error_msg)
         raise
 
 
-# print(read_binary_file("short_token.txt"))
-
-# def send_file(file: str, short_token_file: str,
+# def send_file(file: str, file_path: str,
 #               dropbox_dir_path: str):
-#     with open(short_token_file) as infile:
+#     with open(file_path) as infile:
 #         short_token = infile.read()
 
 #     print(short_token)
-
-
-# send_file("some_file.txt", "short_token.txt")
 
 # print(get_new_short_token(API_REFRESH_ADDRESS, REFRESH_TOKEN, APP_KEY, APP_SECRET))
