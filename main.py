@@ -4,7 +4,7 @@ import requests
 import json
 import logging
 import sys
-from typing import Optional
+from typing import Union
 
 # Load environment variables from .env file
 load_dotenv()
@@ -77,7 +77,7 @@ def get_new_short_token(
         return {"status": "error", "description": f"Request error: {req_err}"}
 
 
-def read_file(file_path: str, mode: str) -> Optional[bytes]:
+def read_file(file_path: str, mode: str) -> Union[str, bytes]:
     """
     Read a file into memory. The `rb` is used when sending the actual
     payload due to Dropbox API specifications.
@@ -85,9 +85,10 @@ def read_file(file_path: str, mode: str) -> Optional[bytes]:
     Parameters:
         file_path (str): The path to the file to be read.
         mode (str): File open mode. `r` for read, `rb` for read binary.
+
     Returns:
-        Optional[bytes]: The content of the file if successful,
-            None if an exception occurs.
+        Union[str, bytes]: The content of the file if successful. Returns a string
+            if the mode is `r`, and bytes if the mode is `rb`.
 
     Raises:
         Exception: If any error occurs during file reading.
@@ -101,6 +102,9 @@ def read_file(file_path: str, mode: str) -> Optional[bytes]:
         logging.error(error_msg)
         raise
 
+
+# def send_file(local_file: str, short_token_file: str,
+#               dropbox_dir: str)
 
 # def send_file(file: str, file_path: str,
 #               dropbox_dir_path: str):
