@@ -78,32 +78,6 @@ def get_new_short_token(
         return {"status": "error", "description": f"Request error: {req_err}"}
 
 
-# def read_file(file_path: str, mode: str) -> Union[str, bytes]:
-#     """
-#     Read a file into memory. The `rb` is used when sending the actual
-#     payload due to Dropbox API specifications.
-
-#     Parameters:
-#         file_path (str): The path to the file to be read.
-#         mode (str): File open mode. `r` for read, `rb` for read binary.
-
-#     Returns:
-#         Union[str, bytes]: The content of the file if successful. Returns a string
-#             if the mode is `r`, and bytes if the mode is `rb`.
-
-#     Raises:
-#         Exception: If any error occurs during file reading.
-#     """
-#     try:
-#         with open(file_path, mode) as f:
-#             file_content = f.read()
-#         return file_content
-#     except Exception as e:
-#         error_msg = f"Error while reading the file: {file_path} " f"Error: {e}"
-#         logging.error(error_msg)
-#         raise
-
-
 def read_file(file_path: str, mode: str) -> Union[str, bytes, dict]:
     """
     Read a file into memory. The `rb` mode is used when sending the actual
@@ -143,35 +117,6 @@ def read_file(file_path: str, mode: str) -> Union[str, bytes, dict]:
     except Exception as e:
         logging.error(f"An error occurred while reading the file: {e}")
         return {"status": "error", "description": f"Error: {e}"}
-
-
-# def send_file(
-#     local_file: str, short_token_file: str, dropbox_dir: str, api_address: str
-# ):
-#     short_token = read_file(short_token_file, "r")
-#     dropbox_arg = {
-#         "autorename": False,
-#         "mode": "add",
-#         "mute": False,
-#         "path": f"{dropbox_dir}/{local_file}",
-#         "strict_conflict": False,
-#     }
-#     headers = {
-#         "Authorization": f"Bearer {short_token}",
-#         "Content-Type": "application/octet-stream",
-#         "Dropbox-API-Arg": json.dumps(dropbox_arg),
-#     }
-#     file_content = read_file(local_file, "rb")
-#     response = requests.post(api_address, headers=headers, data=file_content)
-#     if response.status_code == 200:
-#         logging.info(f"File {local_file} uploaded successfully")
-#     else:
-#         logging.error(
-#             (
-#                 f"Error {response.status_code}: "
-#                 f"{response.text} uploading {local_file}"
-#             )
-#         )
 
 
 def send_file(
