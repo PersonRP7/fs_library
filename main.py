@@ -123,7 +123,8 @@ def send_file(
     local_file: str, short_token_file: str, dropbox_dir: str, api_address: str
 ) -> dict:
     """
-    Send a file to Dropbox using the Dropbox API.
+    Send a file to Dropbox using the Dropbox API. If the token is expired,
+    generates a new token and retries the upload once.
 
     Args:
         local_file (str): The path to the local file to upload.
@@ -134,90 +135,141 @@ def send_file(
     Returns:
         dict: A dictionary indicating the status of the upload and any error messages.
     """
-    # Read the short-lived token from file
-    short_token_result = read_file(short_token_file, "r")
-    if (
-        isinstance(short_token_result, dict)
-        and short_token_result.get("status") == "error"
-    ):
-        logging.error(
-            f"Failed to read short token: {short_token_result['description']}"
-        )
-        return {"status": "error", "description": "Failed to read short token"}
+    retries = 0
+    max_retries = 1
 
-    short_token = (
-        short_token_result.strip()
-    )  # Strip any extraneous whitespace/newline characters
+    while retries <= max_retries:
+        # Read the short-lived token from file
+        short_token_result = read_file(short_token_file, "r")
+        if (
+            isinstance(short_token_result, dict)
+            and short_token_result.get("status") == "error"
+        ):
+            logging.error(
+                f"Failed to read short token: {short_token_result['description']}"
+            )
+            return {"status": "error", "description": "Failed to read short token"}
 
-    # Prepare Dropbox-API-Arg header
-    dropbox_arg = {
-        "autorename": False,
-        "mode": "add",
-        "mute": False,
-        "path": f"{dropbox_dir}/{local_file}",
-        "strict_conflict": False,
-    }
+        short_token = (
+            short_token_result.strip()
+        )  # Strip any extraneous whitespace/newline characters
 
-    headers = {
-        "Authorization": f"Bearer {short_token}",
-        "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": json.dumps(dropbox_arg),
-    }
-
-    # Read the local file content
-    file_content_result = read_file(local_file, "rb")
-    if (
-        isinstance(file_content_result, dict)
-        and file_content_result.get("status") == "error"
-    ):
-        logging.error(
-            f"Failed to read local file: {file_content_result['description']}"
-        )
-        return {"status": "error", "description": "Failed to read local file"}
-
-    file_content = file_content_result
-
-    # Attempt to send the file via the API
-    try:
-        logging.info(
-            f"Uploading file: {local_file} to Dropbox directory: {dropbox_dir}"
-        )
-        response = requests.post(
-            api_address, headers=headers, data=file_content, timeout=10
-        )
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
-
-        logging.info(
-            f"File {local_file} uploaded successfully with status code {response.status_code}."
-        )
-        return {
-            "status": "success",
-            "description": f"File {local_file} uploaded successfully",
+        # Prepare Dropbox-API-Arg header
+        dropbox_arg = {
+            "autorename": False,
+            "mode": "add",
+            "mute": False,
+            "path": f"{dropbox_dir}/{local_file}",
+            "strict_conflict": False,
         }
 
-    except requests.exceptions.HTTPError as http_err:
-        logging.error(
-            f"HTTP error occurred during file upload: {http_err} - Status code: {response.status_code}"
-        )
-        return {"status": "error", "description": f"HTTP error: {http_err}"}
+        headers = {
+            "Authorization": f"Bearer {short_token}",
+            "Content-Type": "application/octet-stream",
+            "Dropbox-API-Arg": json.dumps(dropbox_arg),
+        }
 
-    except requests.exceptions.ConnectionError as conn_err:
-        logging.error(f"Connection error occurred during file upload: {conn_err}")
-        return {"status": "error", "description": f"Connection error: {conn_err}"}
+        # Read the local file content
+        file_content_result = read_file(local_file, "rb")
+        if (
+            isinstance(file_content_result, dict)
+            and file_content_result.get("status") == "error"
+        ):
+            logging.error(
+                f"Failed to read local file: {file_content_result['description']}"
+            )
+            return {"status": "error", "description": "Failed to read local file"}
 
-    except requests.exceptions.Timeout as timeout_err:
-        logging.error(f"Timeout error occurred during file upload: {timeout_err}")
-        return {"status": "error", "description": f"Timeout error: {timeout_err}"}
+        file_content = file_content_result
 
-    except requests.exceptions.RequestException as req_err:
-        logging.error(f"An error occurred during the file upload request: {req_err}")
-        return {"status": "error", "description": f"Request error: {req_err}"}
+        # Attempt to send the file via the API
+        try:
+            logging.info(
+                f"Uploading file: {local_file} to Dropbox directory: {dropbox_dir}"
+            )
+            response = requests.post(
+                api_address, headers=headers, data=file_content, timeout=10
+            )
 
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during file upload: {e}")
-        return {"status": "error", "description": f"Unexpected error: {e}"}
+            if response.status_code == 401 and retries < max_retries:
+                logging.warning(
+                    "Token expired or unauthorized. Attempting to refresh token..."
+                )
+                # Get a new short token and write it to the short token file
+                token_result = get_new_short_token(
+                    API_REFRESH_ADDRESS, REFRESH_TOKEN, APP_KEY, APP_SECRET
+                )
+                if (
+                    isinstance(token_result, dict)
+                    and token_result.get("status") == "error"
+                ):
+                    logging.error(
+                        f"Failed to refresh token: {token_result['description']}"
+                    )
+                    return {"status": "error", "description": "Failed to refresh token"}
+
+                new_short_token = token_result.get("access_token")
+                if not new_short_token:
+                    logging.error("Failed to retrieve new access token.")
+                    return {
+                        "status": "error",
+                        "description": "Failed to retrieve new access token",
+                    }
+
+                # Write the new token to the file
+                try:
+                    with open(short_token_file, "w") as token_file:
+                        token_file.write(new_short_token)
+                    logging.info("New short token written to file successfully.")
+                except IOError as io_err:
+                    logging.error(f"Failed to write new short token to file: {io_err}")
+                    return {
+                        "status": "error",
+                        "description": f"Failed to write new short token: {io_err}",
+                    }
+
+                # Increment retries and retry the upload
+                retries += 1
+                continue  # Retry with the new token
+
+            # Check for success after retry logic
+            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
+            logging.info(
+                f"File {local_file} uploaded successfully with status code {response.status_code}."
+            )
+            return {
+                "status": "success",
+                "description": f"File {local_file} uploaded successfully",
+            }
+
+        except requests.exceptions.HTTPError as http_err:
+            logging.error(
+                f"HTTP error occurred during file upload: {http_err} - Status code: {response.status_code}"
+            )
+            return {"status": "error", "description": f"HTTP error: {http_err}"}
+
+        except requests.exceptions.ConnectionError as conn_err:
+            logging.error(f"Connection error occurred during file upload: {conn_err}")
+            return {"status": "error", "description": f"Connection error: {conn_err}"}
+
+        except requests.exceptions.Timeout as timeout_err:
+            logging.error(f"Timeout error occurred during file upload: {timeout_err}")
+            return {"status": "error", "description": f"Timeout error: {timeout_err}"}
+
+        except requests.exceptions.RequestException as req_err:
+            logging.error(
+                f"An error occurred during the file upload request: {req_err}"
+            )
+            return {"status": "error", "description": f"Request error: {req_err}"}
+
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during file upload: {e}")
+            return {"status": "error", "description": f"Unexpected error: {e}"}
+
+    # If we reach this point, it means retries were exhausted
+    return {"status": "error", "description": "Failed to upload file after retrying"}
 
 
-send_file("file5.txt", "short_token.txt", DROPBOX_DIR, API_ADDRESS)
+send_file("file8.txt", "short_token.txt", DROPBOX_DIR, API_ADDRESS)
 
 # print(get_new_short_token(API_REFRESH_ADDRESS, REFRESH_TOKEN, APP_KEY, APP_SECRET))
