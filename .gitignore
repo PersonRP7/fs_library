@@ -6,3 +6,4 @@ __pycache__
 *.txt
 initial
 short_token.txt
+uploaded_files.log
