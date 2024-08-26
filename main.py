@@ -3,6 +3,7 @@ import os
 import requests
 import json
 import logging
+import shutil
 import sys
 from typing import Union
 from pathlib import Path
@@ -20,6 +21,7 @@ APP_SECRET = os.getenv("APP_SECRET")
 REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 DROPBOX_DIR = os.getenv("DROPBOX_DIR")
 UPLOADED_FILES_LOG = os.getenv("UPLOADED_FILES_LOG")
+UPLOADED_DIRECTORY = os.getenv("UPLOADED_DIRECTORY")
 
 # Set up logging to both file and stdout
 logging.basicConfig(
@@ -187,34 +189,69 @@ def log_uploaded_file(file_path: str):
         logging.error(f"Error logging uploaded file: {e}")
 
 
+def move_file(source_path: str, destination_dir: str) -> dict:
+    """
+    Moves a file from the source path to the specified destination directory.
+
+    Args:
+        source_path (str): The absolute path of the file to move.
+        destination_dir (str): The directory where the file should be moved.
+
+    Returns:
+        dict: A dictionary indicating the status of the move operation
+            and any error messages.
+    """
+    try:
+        # Convert source_path and destination_dir to Path objects
+        source = Path(source_path)
+        destination = Path(destination_dir)
+
+        # Check if the destination directory exists, if not, create it
+        if not destination.exists():
+            destination.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Created directory: {destination}")
+
+        # Move the file to the destination directory
+        shutil.move(str(source), str(destination / source.name))
+        logging.info(f"File {source} moved to {destination}")
+        return {"status": "success", "description": f"File moved to {destination}"}
+
+    except Exception as move_error:
+        logging.error(f"Failed to move file {source} to {destination}: {move_error}")
+        return {"status": "error", "description": f"Failed to move file: {move_error}"}
+
+
 def send_file(
-    local_file: str, short_token_file: str, dropbox_dir: str, api_address: str
+    local_file: str,
+    short_token_file: str,
+    dropbox_dir: str,
+    api_address: str,
+    move_directory: str,
 ) -> dict:
     """
     Send a file to Dropbox using the Dropbox API. If the token is expired,
-    generates a new token and retries the upload once.
+    generates a new token and retries the upload once. Moves the file to the specified
+    directory if the upload is successful.
 
     Args:
         local_file (str): The path to the local file to upload.
         short_token_file (str): The path to the file containing the Dropbox short-lived access token.
         dropbox_dir (str): The directory in Dropbox where the file should be uploaded.
         api_address (str): The API endpoint for uploading the file.
+        move_directory (str): The directory to move the file to after successful upload.
 
     Returns:
         dict: A dictionary indicating the status of the upload and any error messages.
     """
-    # Check if the file has already been uploaded
-    if check_uploaded_log(local_file):
-        logging.info(f"File {local_file} has already been uploaded. Skipping.")
-        return {
-            "status": "skipped",
-            "description": f"File {local_file} has already been uploaded.",
-        }
-
     retries = 0
     max_retries = 1
 
     while retries <= max_retries:
+        # Check if file has already been uploaded
+        if check_uploaded_log(local_file):
+            logging.info(f"File {local_file} already uploaded, skipping.")
+            return {"status": "skipped", "description": "File already uploaded"}
+
         # Read the short-lived token from file
         short_token_result = read_file(short_token_file, "r")
         if (
@@ -314,12 +351,18 @@ def send_file(
                 f"File {local_file} uploaded successfully with status code {response.status_code}."
             )
 
-            # Log the successfully uploaded file
-            log_uploaded_file(local_file)
+            # Append the successfully uploaded file path to the log
+            with open(UPLOADED_FILES_LOG, "a") as log_file:
+                log_file.write(f"{local_file}\n")
+
+            # Move the file to the specified directory using the move_file function
+            move_result = move_file(local_file, move_directory)
+            if move_result["status"] == "error":
+                return move_result
 
             return {
                 "status": "success",
-                "description": f"File {local_file} uploaded successfully",
+                "description": f"File {local_file} uploaded and moved successfully",
             }
 
         except requests.exceptions.HTTPError as http_err:
