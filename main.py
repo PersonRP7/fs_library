@@ -5,7 +5,7 @@ import json
 import logging
 import shutil
 import sys
-from typing import Union
+from typing import Union, List
 from pathlib import Path
 
 # Load environment variables from .env file
@@ -22,6 +22,8 @@ REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 DROPBOX_DIR = os.getenv("DROPBOX_DIR")
 UPLOADED_FILES_LOG = os.getenv("UPLOADED_FILES_LOG")
 UPLOADED_DIRECTORY = os.getenv("UPLOADED_DIRECTORY")
+CURRENT_DIRECTORY = os.getenv("CURRENT_DIRECTORY")
+FILE_EXTENSION = os.getenv("FILE_EXTENSION")
 
 # Set up logging to both file and stdout
 logging.basicConfig(
@@ -221,6 +223,57 @@ def move_file(source_path: str, destination_dir: str) -> dict:
         return {"status": "error", "description": f"Failed to move file: {move_error}"}
 
 
+def get_files_with_extension(directory_path: str, extension: str) -> List[str]:
+    """
+    Collects all files with a specified extension from a directory and returns their absolute paths,
+    replacing any whitespace in filenames with underscores and logging the changes.
+
+    Args:
+        directory_path (str): The path to the directory to search.
+        extension (str): The file extension to filter by (e.g., '.txt').
+
+    Returns:
+        List[str]: A list of absolute file paths that match the specified extension, with spaces replaced by underscores.
+    """
+    files_set = set()
+
+    try:
+        # Convert directory_path to a Path object
+        directory = Path(directory_path)
+
+        # Ensure the directory exists
+        if not directory.is_dir():
+            raise ValueError(
+                f"The directory path provided does not exist or is not a directory: {directory_path}"
+            )
+
+        # Loop over all files in the directory with the specified extension
+        for file in directory.glob(f"*{extension}"):
+            if file.is_file():  # Check if it is a file and not a directory
+                # Replace whitespace with underscores in the filename
+                new_filename = file.name.replace(" ", "_")
+                if new_filename != file.name:
+                    new_file_path = file.parent / new_filename
+
+                    # Log the renaming action
+                    logging.info(f"Renaming file: {file} to {new_file_path}")
+
+                    # Rename the file
+                    file.rename(new_file_path)
+
+                    # Update the file path to the new name
+                    files_set.add(str(new_file_path.resolve()))
+                else:
+                    # Add the file path to the set if no renaming was needed
+                    files_set.add(str(file.resolve()))
+
+    except Exception as e:
+        logging.error(f"An error occurred while processing the directory: {e}")
+        raise
+
+    return list(files_set)
+
+
 def send_file(
     local_file: str,
     short_token_file: str,
@@ -391,3 +444,14 @@ def send_file(
 
     # If we reach this point, it means retries were exhausted
     return {"status": "error", "description": "Failed to upload file after retrying"}
+
+
+if __name__ == "__main__":
+    for file_path in get_files_with_extension(CURRENT_DIRECTORY, FILE_EXTENSION):
+        send_file(
+            file_path,
+            "short_token.txt",
+            DROPBOX_DIR,
+            API_ADDRESS,
+            UPLOADED_DIRECTORY,
+        )
