@@ -19,6 +19,7 @@ APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 DROPBOX_DIR = os.getenv("DROPBOX_DIR")
+UPLOADED_FILES_LOG = os.getenv("UPLOADED_FILES_LOG")
 
 # Set up logging to both file and stdout
 logging.basicConfig(
@@ -137,11 +138,53 @@ def extract_filename(file_path: str) -> str:
         filename = Path(file_path).name
         return filename
     except TypeError as e:
-        logging.error(f"TypeError: Provided file path is not a valid string - {e}")
-        raise ValueError("Invalid file path provided; it must be a string.") from e
+        logging.error(f"TypeError: Provided file path is not a correct string - {e}")
+        raise ValueError("Incorrect file path provided; it must be a string.") from e
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
         raise
+
+
+def check_uploaded_log(file_path: str) -> bool:
+    """
+    Check if a file has already been uploaded by looking up its path in the log file.
+    If the log file does not exist, create it.
+
+    Args:
+        file_path (str): The absolute path of the file to check.
+
+    Returns:
+        bool: True if the file is already logged as uploaded, False otherwise.
+    """
+    try:
+        with open(UPLOADED_FILES_LOG, "r") as log_file:
+            uploaded_files = log_file.readlines()
+            uploaded_files = [line.strip() for line in uploaded_files]
+        return file_path in uploaded_files
+    except FileNotFoundError:
+        # If the log file does not exist, create it
+        logging.info("Uploaded files log does not exist. Creating log file.")
+        with open(UPLOADED_FILES_LOG, "w") as log_file:
+            pass  # Create the file
+        return False
+    except Exception as e:
+        logging.error(f"Error checking uploaded files log: {e}")
+        return False
+
+
+def log_uploaded_file(file_path: str):
+    """
+    Append the file path to the uploaded files log.
+
+    Args:
+        file_path (str): The absolute path of the file to log as uploaded.
+    """
+    try:
+        with open(UPLOADED_FILES_LOG, "a") as log_file:
+            log_file.write(f"{file_path}\n")
+        logging.info(f"Logged uploaded file: {file_path}")
+    except Exception as e:
+        logging.error(f"Error logging uploaded file: {e}")
 
 
 def send_file(
@@ -160,6 +203,14 @@ def send_file(
     Returns:
         dict: A dictionary indicating the status of the upload and any error messages.
     """
+    # Check if the file has already been uploaded
+    if check_uploaded_log(local_file):
+        logging.info(f"File {local_file} has already been uploaded. Skipping.")
+        return {
+            "status": "skipped",
+            "description": f"File {local_file} has already been uploaded.",
+        }
+
     retries = 0
     max_retries = 1
 
@@ -262,6 +313,10 @@ def send_file(
             logging.info(
                 f"File {local_file} uploaded successfully with status code {response.status_code}."
             )
+
+            # Log the successfully uploaded file
+            log_uploaded_file(local_file)
+
             return {
                 "status": "success",
                 "description": f"File {local_file} uploaded successfully",
