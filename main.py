@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 from typing import Union
+from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
@@ -119,6 +120,30 @@ def read_file(file_path: str, mode: str) -> Union[str, bytes, dict]:
         return {"status": "error", "description": f"Error: {e}"}
 
 
+def extract_filename(file_path: str) -> str:
+    """
+    Extracts the filename from an absolute file path.
+
+    Args:
+        file_path (str): The absolute path to the file.
+
+    Returns:
+        str: The filename extracted from the path.
+
+    Raises:
+        ValueError: If the provided file path is not a valid string.
+    """
+    try:
+        filename = Path(file_path).name
+        return filename
+    except TypeError as e:
+        logging.error(f"TypeError: Provided file path is not a valid string - {e}")
+        raise ValueError("Invalid file path provided; it must be a string.") from e
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
+        raise
+
+
 def send_file(
     local_file: str, short_token_file: str, dropbox_dir: str, api_address: str
 ) -> dict:
@@ -159,7 +184,7 @@ def send_file(
             "autorename": False,
             "mode": "add",
             "mute": False,
-            "path": f"{dropbox_dir}/{local_file}",
+            "path": f"{dropbox_dir}/{extract_filename(local_file)}",
             "strict_conflict": False,
         }
 
@@ -268,8 +293,3 @@ def send_file(
 
     # If we reach this point, it means retries were exhausted
     return {"status": "error", "description": "Failed to upload file after retrying"}
-
-
-send_file("file8.txt", "short_token.txt", DROPBOX_DIR, API_ADDRESS)
-
-# print(get_new_short_token(API_REFRESH_ADDRESS, REFRESH_TOKEN, APP_KEY, APP_SECRET))
