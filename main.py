@@ -5,7 +5,7 @@ import json
 import logging
 import shutil
 import sys
-from typing import Union, List
+from typing import Union, List, Optional
 from pathlib import Path
 
 # Load environment variables from .env file
@@ -23,7 +23,10 @@ DROPBOX_DIR = os.getenv("DROPBOX_DIR")
 UPLOADED_FILES_LOG = os.getenv("UPLOADED_FILES_LOG")
 UPLOADED_DIRECTORY = os.getenv("UPLOADED_DIRECTORY")
 CURRENT_DIRECTORY = os.getenv("CURRENT_DIRECTORY")
-FILE_EXTENSION = os.getenv("FILE_EXTENSION")
+FILE_EXTENSIONS = os.getenv("FILE_EXTENSIONS")
+RECURSE = os.getenv("RECURSE", "False").lower() in ("true", "1", "t")
+SKIP_DIRS = os.getenv("SKIP_DIRS")
+SHORT_TOKEN_FILE = os.getenv("SHORT_TOKEN_FILE")
 
 # Set up logging to both file and stdout
 logging.basicConfig(
@@ -223,17 +226,31 @@ def move_file(source_path: str, destination_dir: str) -> dict:
         return {"status": "error", "description": f"Failed to move file: {move_error}"}
 
 
-def get_files_with_extension(directory_path: str, extension: str) -> List[str]:
+def get_files_with_extensions(
+    directory_path: str,
+    extensions: str,
+    recurse: bool = False,
+    skip_dirs: Optional[str] = None,
+) -> List[str]:
     """
-    Collects all files with a specified extension from a directory and returns their absolute paths,
-    replacing any whitespace in filenames with underscores and logging the changes.
+    Collects all files with specified extensions from a directory
+    and returns their absolute paths,
+    replacing any whitespace in filenames with underscores
+    and logging the changes. Can optionally
+    recurse through subdirectories and skip specified directories.
 
     Args:
         directory_path (str): The path to the directory to search.
-        extension (str): The file extension to filter by (e.g., '.txt').
+        extensions (str): A comma-separated string
+            of file extensions to filter by (e.g., '.epub,.mobi,.txt').
+        recurse (bool): Whether to recursively search subdirectories.
+            Defaults to False.
+        skip_dirs (Optional[str]): A comma-separated string of directory names
+            to skip if recursing. Optional.
 
     Returns:
-        List[str]: A list of absolute file paths that match the specified extension, with spaces replaced by underscores.
+        List[str]: A list of absolute file paths that match the specified extensions,
+            with spaces replaced by underscores.
     """
     files_set = set()
 
@@ -247,9 +264,30 @@ def get_files_with_extension(directory_path: str, extension: str) -> List[str]:
                 f"The directory path provided does not exist or is not a directory: {directory_path}"
             )
 
-        # Loop over all files in the directory with the specified extension
-        for file in directory.glob(f"*{extension}"):
-            if file.is_file():  # Check if it is a file and not a directory
+        # Determine if multiple extensions are provided
+        if "," in extensions:
+            # Split extensions into a list and strip any extraneous whitespace
+            extensions_list = [ext.strip() for ext in extensions.split(",")]
+        else:
+            # Single extension provided, wrap it in a list
+            extensions_list = [extensions.strip()]
+
+        # Prepare the set of directories to skip if provided
+        skip_dirs_set = set(skip_dirs.split(",")) if skip_dirs else set()
+
+        # Choose the appropriate iterator (rglob for recursion or glob for non-recursive)
+        file_iterator = directory.rglob("*") if recurse else directory.glob("*")
+
+        # Loop over all files in the directory (and subdirectories if recurse is True)
+        for file in file_iterator:
+            # Check if file is in a directory that needs to be skipped
+            if recurse and any(skip_dir in file.parts for skip_dir in skip_dirs_set):
+                continue
+
+            # Check for the specified file extensions
+            if file.is_file() and any(
+                file.name.endswith(ext) for ext in extensions_list
+            ):
                 # Replace whitespace with underscores in the filename
                 new_filename = file.name.replace(" ", "_")
                 if new_filename != file.name:
@@ -447,10 +485,12 @@ def send_file(
 
 
 if __name__ == "__main__":
-    for file_path in get_files_with_extension(CURRENT_DIRECTORY, FILE_EXTENSION):
+    for file_path in get_files_with_extensions(
+        CURRENT_DIRECTORY, FILE_EXTENSIONS, recurse=RECURSE, skip_dirs=SKIP_DIRS
+    ):
         send_file(
             file_path,
-            "short_token.txt",
+            SHORT_TOKEN_FILE,
             DROPBOX_DIR,
             API_ADDRESS,
             UPLOADED_DIRECTORY,
