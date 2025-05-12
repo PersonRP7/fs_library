@@ -10,13 +10,14 @@ It uses dropbox as the backend by handling several segments:
  - File naming standardization
 
 ## Deployment ##
-The script's key components are provisioned through an .env file
+The script's key components are provisioned through an .env file.
+
 Create a virtual environment:
-
 ```python -m venv env```
-Activate the virtual environment:
 
+Activate the virtual environment:
 ```.\env\Scripts\Activate.ps1```
+
 Provision the .env file:
 
 Observe the ```.env_example```.
